@@ -51,6 +51,28 @@
 #define SOCK_NONBLOCK O_NONBLOCK
 #endif
 
+#include <netdb.h>
+#include <iostream>
+
+
+#include <errno.h>
+#include <net/if.h>
+#include <netdb.h>       // getaddrinfo()
+#include <netinet/in.h>  // e.g. struct sockaddr_in on OpenBSD
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>  // read()/write()
+
+
+#define LIBSOCKET_BACKLOG \
+    128  ///< Linux accepts a backlog value at listen() up to 128
+
+
 namespace libsocket {
 using std::string;
 
@@ -71,8 +93,8 @@ inet_stream_server::inet_stream_server(void) {}
  */
 inet_stream_server::inet_stream_server(const char* bindhost,
                                        const char* bindport, int proto_osi3,
-                                       int flags) {
-    setup(bindhost, bindport, proto_osi3, flags);
+                                       const Optional& anOptional) {
+    setup(bindhost, bindport, proto_osi3, anOptional);
 }
 
 /**
@@ -87,8 +109,8 @@ inet_stream_server::inet_stream_server(const char* bindhost,
  */
 inet_stream_server::inet_stream_server(const string& bindhost,
                                        const string& bindport, int proto_osi3,
-                                       int flags) {
-    setup(bindhost, bindport, proto_osi3, flags);
+                                       const Optional& anOptional) {
+    setup(bindhost, bindport, proto_osi3, anOptional);
 }
 
 /**
@@ -103,7 +125,7 @@ inet_stream_server::inet_stream_server(const string& bindhost,
  * @param flags Flags for `socket(2)`
  */
 void inet_stream_server::setup(const char* bindhost, const char* bindport,
-                               int proto_osi3, int flags) {
+                               int proto_osi3, const Optional& anOptional) {
     if (sfd != -1)
         throw socket_exception(__FILE__, __LINE__,
                                "inet_stream_server::inet_stream_server() - "
@@ -115,7 +137,7 @@ void inet_stream_server::setup(const char* bindhost, const char* bindport,
                                "least one bind argument invalid!",
                                false);
     if (-1 == (sfd = create_inet_server_socket(
-                   bindhost, bindport, LIBSOCKET_TCP, proto_osi3, flags)))
+                   bindhost, bindport, LIBSOCKET_TCP, proto_osi3, anOptional.flags)))
         throw socket_exception(__FILE__, __LINE__,
                                "inet_stream_server::inet_stream_server() - "
                                "could not create server socket!");
@@ -123,10 +145,116 @@ void inet_stream_server::setup(const char* bindhost, const char* bindport,
     host = string(bindhost);
     port = string(bindport);
 
-    is_nonblocking = flags & SOCK_NONBLOCK;
+    is_nonblocking = anOptional.flags & SOCK_NONBLOCK;
 }
 
-/**
+int __create_inet_server_socket__(const char *bind_addr, const char *bind_port,
+                                  char proto_osi4, char proto_osi3, const Optional& anOptional) {
+    int sfd, domain, type, retval;
+    struct addrinfo *result, *result_check, hints;
+#ifdef VERBOSE
+    const char *errstr;
+#endif
+
+    // if ( flags != SOCK_NONBLOCK && flags != SOCK_CLOEXEC && flags !=
+    // (SOCK_CLOEXEC|SOCK_NONBLOCK) && flags != 0 ) 	return -1;
+
+    if (bind_addr == NULL || bind_port == NULL) return -1;
+
+    switch (proto_osi4) {
+        case LIBSOCKET_TCP:
+            type = SOCK_STREAM;
+            break;
+        case LIBSOCKET_UDP:
+            type = SOCK_DGRAM;
+            break;
+        default:
+            return -1;
+    }
+    switch (proto_osi3) {
+        case LIBSOCKET_IPv4:
+            domain = AF_INET;
+            break;
+        case LIBSOCKET_IPv6:
+            domain = AF_INET6;
+            break;
+        case LIBSOCKET_BOTH:
+            domain = AF_UNSPEC;
+            break;
+        default:
+            return -1;
+    }
+
+    memset(&hints, 0, sizeof(struct addrinfo));
+
+    hints.ai_socktype = type;
+    hints.ai_family = domain;
+    hints.ai_flags = AI_PASSIVE;
+
+    if (0 != (retval = getaddrinfo(bind_addr, bind_port, &hints, &result))) {
+#ifdef VERBOSE
+        errstr = gai_strerror(retval);
+debug_write(errstr);
+#endif
+        return -1;
+    }
+
+    // As described in "The Linux Programming Interface", Michael Kerrisk 2010,
+    // chapter 59.11 (p. 1220ff)
+    for (result_check = result; result_check != NULL;
+         result_check = result_check->ai_next)  // go through the linked list of
+        // struct addrinfo elements
+    {
+        sfd = ::socket(result_check->ai_family, result_check->ai_socktype | anOptional.flags,
+                     result_check->ai_protocol);
+
+        if (sfd < 0)  // Error at socket()!!!
+            continue;
+
+        for (auto& it : anOptional.sockOptFlags) {
+            int val = 1;
+            if (setsockopt(sfd, SOL_SOCKET, it, &val, sizeof(int)) < 0)
+                continue;
+        }
+
+        retval = bind(sfd, result_check->ai_addr,
+                      (socklen_t)result_check->ai_addrlen);
+
+        if (retval != 0)  // Error at bind()!!!
+        {
+            close(sfd);
+            continue;
+        }
+
+        if (type == LIBSOCKET_TCP) retval = listen(sfd, LIBSOCKET_BACKLOG);
+
+        if (retval == 0)  // If we came until here, there wasn't an error
+            // anywhere. It is safe to cancel the loop here
+            break;
+        else
+            close(sfd);
+    }
+
+    if (result_check == NULL) {
+#ifdef VERBOSE
+        debug_write(
+    "create_inet_server_socket: Could not bind to any address!\n");
+#endif
+        freeaddrinfo(result);
+        return -1;
+    }
+
+    // We do now have a working socket on which we may call accept()
+
+    freeaddrinfo(result);
+
+    return sfd;
+}
+
+
+
+
+    /**
  * @brief Set up a server socket.
  *
  * If the zero-argument constructor was used, this method
@@ -138,7 +266,7 @@ void inet_stream_server::setup(const char* bindhost, const char* bindport,
  * @param flags Flags for `socket(2)`
  */
 void inet_stream_server::setup(const string& bindhost, const string& bindport,
-                               int proto_osi3, int flags) {
+                               int proto_osi3, const Optional& anOptional) {
     if (sfd != -1)
         throw socket_exception(__FILE__, __LINE__,
                                "inet_stream_server::inet_stream_server() - "
@@ -150,8 +278,8 @@ void inet_stream_server::setup(const string& bindhost, const string& bindport,
                                "least one bind argument invalid!",
                                false);
     if (-1 ==
-        (sfd = create_inet_server_socket(bindhost.c_str(), bindport.c_str(),
-                                         LIBSOCKET_TCP, proto_osi3, flags)))
+        (sfd = __create_inet_server_socket__(bindhost.c_str(), bindport.c_str(),
+                                         LIBSOCKET_TCP, proto_osi3, anOptional)))
         throw socket_exception(__FILE__, __LINE__,
                                "inet_stream_server::inet_stream_server() - "
                                "could not create server socket!");
@@ -159,8 +287,9 @@ void inet_stream_server::setup(const string& bindhost, const string& bindport,
     host = string(bindhost);
     port = string(bindport);
 
-    is_nonblocking = flags & SOCK_NONBLOCK;
+    is_nonblocking = anOptional.flags & SOCK_NONBLOCK;
 }
+
 
 /**
  * @brief Accept a connection and return a socket connected to the client.
