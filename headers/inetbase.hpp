@@ -58,11 +58,18 @@ class inet_socket : public virtual socket {
     /// Which internet protocol version we're using
     int proto;
 
+    /// ip and port of the client itself
+    string hostClient;
+    string portClient;
+
    public:
     inet_socket();
 
     const string& gethost(void) const;
     const string& getport(void) const;
+
+    const string& gethostClient(void) const;
+    const string& getportClient(void) const;
 };
 /**
  * @}

@@ -63,4 +63,8 @@ const string& inet_socket::gethost(void) const { return host; }
  * For sockets behaving as server: Returns the port bound to.
  */
 const string& inet_socket::getport(void) const { return port; }
+
+const string &inet_socket::gethostClient(void) const {return hostClient;}
+const string &inet_socket::getportClient(void) const {return portClient;}
+
 }  // namespace libsocket

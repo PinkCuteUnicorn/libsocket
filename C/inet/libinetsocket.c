@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #endif
 
+
 #include "conf.h"
 #define LIBSOCKET_VERSION 2.4
 #ifdef BD_ANDROID
@@ -203,9 +204,10 @@ int create_inet_stream_socket(const char *host, const char *service,
 
         int CON_RES = connect(sfd, result_check->ai_addr,
                               result_check->ai_addrlen);
+
         if ((CON_RES != -1) || (CON_RES == -1 && (flags |= SOCK_NONBLOCK) && ((errno == EINPROGRESS) || (errno == EALREADY) || (errno == EINTR))))     // connected without error, or, connected with errno being one of these important states
              break;
-       
+
         close(sfd);
     }
 

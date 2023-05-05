@@ -6,6 +6,22 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+
+#include <arpa/inet.h>
+#include <errno.h>
+#include <net/if.h>
+#include <netdb.h>       // getaddrinfo()
+#include <netinet/in.h>  // e.g. struct sockaddr_in on OpenBSD
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>  // read()/write()
+
 /*
    The committers of the libsocket project, all rights reserved
    (c) 2012, dermesser <lbo@spheniscida.de>
@@ -84,6 +100,101 @@ inet_stream::inet_stream(const string& dsthost, const string& dstport,
     connect(dsthost.c_str(), dstport.c_str(), proto_osi3, flags);
 }
 
+static int _create_inet_stream_socket_(const char *host, const char *service,
+                                     char proto_osi3, int flags, std::string& bufferHost, std::string& bufferPort) {
+
+    int sfd, return_value;
+    struct addrinfo hint, *result, *result_check;
+#ifdef VERBOSE
+    const char *errstring;
+#endif
+
+    if (host == NULL || service == NULL) return -1;
+
+    memset(&hint, 0, sizeof hint);
+
+    // set address family
+    switch (proto_osi3) {
+        case LIBSOCKET_IPv4:
+            hint.ai_family = AF_INET;
+            break;
+        case LIBSOCKET_IPv6:
+            hint.ai_family = AF_INET6;
+            break;
+        case LIBSOCKET_BOTH:
+            hint.ai_family = AF_UNSPEC;
+            break;
+        default:
+            return -1;
+    }
+
+    // Transport protocol is TCP
+    hint.ai_socktype = SOCK_STREAM;
+
+    if (0 != (return_value = getaddrinfo(host, service, &hint, &result))) {
+#ifdef VERBOSE
+        errstring = gai_strerror(return_value);
+        debug_write(errstring);
+#endif
+        return -1;
+    }
+
+    // As described in "The Linux Programming Interface", Michael Kerrisk 2010,
+    // chapter 59.11 (p. 1220ff)
+
+    for (result_check = result; result_check != NULL;
+         result_check = result_check->ai_next)  // go through the linked list of
+        // struct addrinfo elements
+    {
+        sfd = ::socket(result_check->ai_family, result_check->ai_socktype | flags,
+                     result_check->ai_protocol);
+
+        if (sfd < 0)  // Error!!!
+            continue;
+
+        int CON_RES = connect(sfd, result_check->ai_addr,
+                              result_check->ai_addrlen);
+
+        struct sockaddr_in server_addr, my_addr;
+        // Get my ip address and port
+        bzero(&my_addr, sizeof(my_addr));
+        socklen_t len = sizeof(my_addr);
+        getsockname(sfd, (struct sockaddr *) &my_addr, &len);
+
+        char tmpIP[16]{0};
+        inet_ntop(AF_INET, &my_addr.sin_addr, tmpIP, 16);
+        bufferHost = tmpIP;
+        bufferPort = std::to_string(ntohs(my_addr.sin_port));
+
+
+        if ((CON_RES != -1) || (CON_RES == -1 && (flags |= SOCK_NONBLOCK) && ((errno == EINPROGRESS) || (errno == EALREADY) || (errno == EINTR))))     // connected without error, or, connected with errno being one of these important states
+            break;
+
+        close(sfd);
+    }
+
+    // We do now have a working socket STREAM connection to our target
+
+    if (result_check == NULL)  // Have we?
+    {
+#ifdef VERBOSE
+        debug_write(
+            "create_inet_stream_socket: Could not connect to any address!\n");
+#endif
+        int errno_saved = errno;
+        close(sfd);
+        errno = errno_saved;
+        freeaddrinfo(result);
+        return -1;
+    }
+    // Yes :)
+
+    freeaddrinfo(result);
+
+    return sfd;
+}
+
+
 /**
  * @brief Set up socket if not already done.
  *
@@ -102,7 +213,8 @@ void inet_stream::connect(const char* dsthost, const char* dstport,
                                "inet_stream::connect() - Already connected!",
                                false);
 
-    sfd = create_inet_stream_socket(dsthost, dstport, proto_osi3, flags);
+
+    sfd = _create_inet_stream_socket_(dsthost, dstport, proto_osi3, flags, hostClient, portClient);
 
     if (sfd < 0)
         throw socket_exception(
@@ -111,6 +223,7 @@ void inet_stream::connect(const char* dsthost, const char* dstport,
 
     host = dsthost;
     port = dstport;
+
     proto = proto_osi3;
 
     // New file descriptor, therefore reset shutdown flags
