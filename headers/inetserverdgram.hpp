@@ -35,7 +35,15 @@
 
 */
 
+#include <vector>
+
 namespace libsocket {
+
+    struct OptionalDgram{
+        int flags = 0;                  ///< Флаги для accept
+        std::vector<int> sockOptFlags;  ///< Флаги, которые будут выставлены на сокет после его создания, но до bind
+    };
+
 /** @addtogroup libsocketplusplus
  * @{
  */
@@ -46,19 +54,19 @@ namespace libsocket {
  * symmetric). It has some special features, e.g. it's not possible to connect
  * it.
  */
-class inet_dgram_server : public inet_dgram {
-   public:
-    inet_dgram_server(const char* host, const char* port, int proto_osi3,
-                      int flags = 0);
-    inet_dgram_server(const string& host, const string& port, int proto_osi3,
-                      int flags = 0);
+    class inet_dgram_server : public inet_dgram {
+    public:
+        inet_dgram_server(const char* host, const char* port, int proto_osi3,
+                          const OptionalDgram& anOptional = {});
+        inet_dgram_server(const string& host, const string& port, int proto_osi3,
+                          const OptionalDgram& anOptional = {});
 
-   private:
-    void setup(const char* host, const char* port, int proto_osi3,
-               int flags = 0);
-    void setup(const string& host, const string& port, int proto_osi3,
-               int flags = 0);
-};
+    private:
+        void setup(const char* host, const char* port, int proto_osi3,
+                   const OptionalDgram& anOptional = {});
+        void setup(const string& host, const string& port, int proto_osi3,
+                   const OptionalDgram& anOptional = {});
+    };
 /**
  * @}
  */

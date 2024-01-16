@@ -93,7 +93,7 @@ inet_stream_server::inet_stream_server(void) {}
  */
 inet_stream_server::inet_stream_server(const char* bindhost,
                                        const char* bindport, int proto_osi3,
-                                       const Optional& anOptional) {
+                                       const OptionalStream& anOptional) {
     setup(bindhost, bindport, proto_osi3, anOptional);
 }
 
@@ -109,7 +109,7 @@ inet_stream_server::inet_stream_server(const char* bindhost,
  */
 inet_stream_server::inet_stream_server(const string& bindhost,
                                        const string& bindport, int proto_osi3,
-                                       const Optional& anOptional) {
+                                       const OptionalStream& anOptional) {
     setup(bindhost, bindport, proto_osi3, anOptional);
 }
 
@@ -125,7 +125,7 @@ inet_stream_server::inet_stream_server(const string& bindhost,
  * @param flags Flags for `socket(2)`
  */
 void inet_stream_server::setup(const char* bindhost, const char* bindport,
-                               int proto_osi3, const Optional& anOptional) {
+                               int proto_osi3, const OptionalStream& anOptional) {
     if (sfd != -1)
         throw socket_exception(__FILE__, __LINE__,
                                "inet_stream_server::inet_stream_server() - "
@@ -149,7 +149,7 @@ void inet_stream_server::setup(const char* bindhost, const char* bindport,
 }
 
 int __create_inet_server_socket__(const char *bind_addr, const char *bind_port,
-                                  char proto_osi4, char proto_osi3, const Optional& anOptional) {
+                                  char proto_osi4, char proto_osi3, const OptionalStream& anOptional) {
     int sfd, domain, type, retval;
     struct addrinfo *result, *result_check, hints;
 #ifdef VERBOSE
@@ -252,9 +252,7 @@ debug_write(errstr);
 }
 
 
-
-
-    /**
+/**
  * @brief Set up a server socket.
  *
  * If the zero-argument constructor was used, this method
@@ -266,7 +264,7 @@ debug_write(errstr);
  * @param flags Flags for `socket(2)`
  */
 void inet_stream_server::setup(const string& bindhost, const string& bindport,
-                               int proto_osi3, const Optional& anOptional) {
+                               int proto_osi3, const OptionalStream& anOptional) {
     if (sfd != -1)
         throw socket_exception(__FILE__, __LINE__,
                                "inet_stream_server::inet_stream_server() - "

@@ -41,7 +41,7 @@
 namespace libsocket {
 using std::unique_ptr;
 
-struct Optional{
+struct OptionalStream{
     int flags = 0;                  ///< Флаги для accept
     std::vector<int> sockOptFlags;  ///< Флаги, которые будут выставлены на сокет после его создания, но до bind
 };
@@ -65,14 +65,14 @@ public:
 
     inet_stream_server(void);
     inet_stream_server(const char* bindhost, const char* bindport,
-                       int proto_osi3, const Optional& anOptional = {});
+                       int proto_osi3, const OptionalStream& anOptional = {});
     inet_stream_server(const string& bindhost, const string& bindport,
-                       int proto_osi3, const Optional& anOptional = {});
+                       int proto_osi3, const OptionalStream& anOptional = {});
 
     void setup(const char* bindhost, const char* bindport, int proto_osi3,
-               const Optional& anOptional = {});
+               const OptionalStream& anOptional = {});
     void setup(const string& bindhost, const string& bindport, int proto_osi3,
-               const Optional& anOptional = {});
+               const OptionalStream& anOptional = {});
 
     inet_stream* accept(int numeric = 0, int accept_flags = 0);
     unique_ptr<inet_stream> accept2(int numeric = 0, int accept_flags = 0);
